@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Any
+
+from .contracts import validate_profile
 
 
 @dataclass(frozen=True)
@@ -52,7 +56,8 @@ def _merge_types(types: set[str]) -> str:
     return next(iter(types)) if len(types) == 1 else "mixed"
 
 
-def profile_csv(path: Path) -> dict[str, object]:
+def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    settings = validate_profile({} if profile is None else profile)
     raw = path.read_bytes()
     text = raw.decode("utf-8-sig")
     if not text.strip():
@@ -61,7 +66,7 @@ def profile_csv(path: Path) -> dict[str, object]:
         dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
-    reader = csv.reader(text.splitlines(), dialect)
+    reader = csv.reader(io.StringIO(text), delimiter=settings.get("delimiter", dialect.delimiter))
     try:
         headers = next(reader)
     except StopIteration as exc:  # pragma: no cover - guarded by the non-empty check
@@ -81,13 +86,34 @@ def profile_csv(path: Path) -> dict[str, object]:
         for index, value in enumerate(row):
             values[index].append(value)
     columns = []
+    null_values = set(settings.get("null_values", [""]))
+
+    def cell_type(value: str) -> str:
+        clean = value.strip()
+        if clean in null_values:
+            return "null"
+        if not clean:
+            return "text"
+        if settings.get("date_format"):
+            try:
+                datetime.strptime(clean, settings["date_format"])
+                return "date"
+            except ValueError:
+                pass
+        number = clean
+        if settings.get("thousands_separator"):
+            number = number.replace(settings["thousands_separator"], "")
+        number = number.replace(settings.get("decimal_separator", "."), ".")
+        kind = _cell_type(number)
+        return kind if kind in ("integer", "decimal") else _cell_type(clean)
+
     for index, (header, column) in enumerate(zip(headers, values, strict=True)):
-        null_count = sum(not value.strip() for value in column)
+        null_count = sum(value.strip() in null_values for value in column)
         columns.append(
             ColumnProfile(
                 header,
                 index,
-                _merge_types({_cell_type(value) for value in column}),
+                _merge_types({cell_type(value) for value in column}),
                 bool(null_count),
                 null_count,
                 len(column) - null_count,
@@ -99,14 +125,15 @@ def profile_csv(path: Path) -> dict[str, object]:
         "source": path.name,
         "sourceSha256": hashlib.sha256(raw).hexdigest(),
         "encoding": "utf-8",
-        "delimiter": dialect.delimiter,
+        "delimiter": settings.get("delimiter", dialect.delimiter),
+        "parsingProfile": settings,
         "rowCount": row_count,
         "invalidRowCount": invalid_rows,
         "columns": [asdict(column) for column in columns],
     }
 
 
-def compare_profiles(baseline: dict[str, object], current: dict[str, object]) -> dict[str, object]:
+def compare_profiles(baseline: dict[str, object], current: dict[str, object]) -> dict[str, Any]:
     baseline_columns = baseline["columns"]
     current_columns = current["columns"]
     assert isinstance(baseline_columns, list) and isinstance(current_columns, list)

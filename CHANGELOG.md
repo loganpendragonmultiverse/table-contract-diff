@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0 - 2026-09-07
+
+- Add expected-schema validation, exact approved-change rules, locale parsing profiles and a value-free HTML comparison.
+- Added regression coverage for the audited behavior and invalid inputs.
+
 ## 1.0.0 - 2026-08-10
 
 - Added value-free CSV profiling with inferred types, nullability, dialect, row evidence, and hashes.
