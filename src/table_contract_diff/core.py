@@ -96,7 +96,7 @@ def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, 
             return "text"
         if settings.get("date_format"):
             try:
-                datetime.strptime(clean, settings["date_format"])
+                datetime.strptime(clean, settings["date_format"]).date()
                 return "date"
             except ValueError:
                 pass
