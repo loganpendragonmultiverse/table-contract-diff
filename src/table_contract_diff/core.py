@@ -96,7 +96,8 @@ def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, 
             return "text"
         if settings.get("date_format"):
             try:
-                datetime.strptime(clean, settings["date_format"]).date()
+                # Date syntax validation only; this never represents or compares an instant.
+                datetime.strptime(clean, settings["date_format"]).date()  # noqa: DTZ007
                 return "date"
             except ValueError:
                 pass
