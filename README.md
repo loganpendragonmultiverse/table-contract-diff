@@ -20,7 +20,7 @@ table-contract-diff previous.csv current.csv --format json --fail-breaking
 - Dates use ISO-style parsing. Locale-specific numbers and dates may be classified as text.
 - Input files remain unchanged; there is no network access, upload, telemetry, spreadsheet execution, or formula evaluation.
 
-Python 3.10+ on Windows, macOS, and Linux. Current release: **v1.1.0**. Pull requests are reviewed. MIT licensed.
+Python 3.10+ on Windows, macOS, and Linux. Current release: **v1.2.0**. Pull requests are reviewed. MIT licensed.
 
 ## Version 1.1.0: reviewed improvements
 
@@ -33,7 +33,7 @@ table-contract-diff before.csv after.csv --format html --output review.html
 --expected-schema reads columns keyed by name with type, nullable and optional required (default true), plus allow_extra (default false). --approved-rules is an array of exact code/column/before/after matches with explanation; original breakingChange remains visible and schema violations cannot be approved away. --profiles reads named delimiter/null_values/decimal_separator/thousands_separator/date_format settings, selected with --profile. Dates and numeric conventions are explicit; observed sample types remain inference. --fail-breaking uses effectiveBreakingChange. Reports and schema outputs must be distinct new files; cell values and source CSVs remain untouched.
 
 
-## Reviewed column mapping (1.2.0 source candidate)
+## Reviewed column mapping (1.2.0)
 
 Pass `--column-mapping mapping.json` to align explicitly reviewed removed-to-added columns. The JSON is an array, for example:
 

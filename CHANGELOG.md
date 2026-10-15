@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 - Unreleased
+## 1.2.0 - 2026-10-15
 
 - Add explicit one-to-one removed-to-added column mappings with required explanations and aligned structural comparison.
 - Retain original changes and breaking-change evidence; mapped type/nullability changes and expected-schema violations remain independently reviewable.
