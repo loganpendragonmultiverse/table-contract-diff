@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 - Unreleased
+
+- Add explicit one-to-one removed-to-added column mappings with required explanations and aligned structural comparison.
+- Retain original changes and breaking-change evidence; mapped type/nullability changes and expected-schema violations remain independently reviewable.
+
 ## 1.1.0 - 2026-09-07
 
 - Add expected-schema validation, exact approved-change rules, locale parsing profiles and a value-free HTML comparison.

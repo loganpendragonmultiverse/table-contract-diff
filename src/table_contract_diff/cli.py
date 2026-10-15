@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .contracts import check_contract, render_html, review_changes
+from .contracts import apply_column_mapping, check_contract, render_html, review_changes
 from .core import compare_profiles, profile_csv
 
 
@@ -39,7 +39,27 @@ def _markdown(report: dict[str, object]) -> str:
         for item in candidates:
             assert isinstance(item, dict)
             lines.append(f"- `{item['from']}` → `{item['to']}` ({item['similarity']})")
+    if "mappingReview" in report:
+        lines.extend(
+            [
+                "",
+                "## Explicit column mapping",
+                "",
+                "Original structural breakingChange is retained; mapped type/nullability changes and expected-schema violations still require review.",
+                "",
+                json.dumps(report["mappingReview"], indent=2),
+            ]
+        )
     return "\n".join(lines)
+
+
+def _unique_mapping_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate key in column mapping JSON")
+        result[key] = value
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,6 +69,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=("json", "markdown", "html"), default="markdown")
     parser.add_argument("--expected-schema", type=Path)
     parser.add_argument("--approved-rules", type=Path)
+    parser.add_argument(
+        "--column-mapping", type=Path, help="reviewed removed-to-added mapping JSON"
+    )
     parser.add_argument("--profiles", type=Path)
     parser.add_argument("--profile", default="default")
     parser.add_argument("--output", type=Path)
@@ -72,8 +95,22 @@ def main(argv: list[str] | None = None) -> int:
         baseline = profile_csv(args.baseline, profiles[args.profile])
         current = profile_csv(args.current, profiles[args.profile])
         report = compare_profiles(baseline, current)
+        comparison = report
+        if args.column_mapping:
+            if args.column_mapping.stat().st_size > 1_000_000:
+                raise ValueError("column mapping exceeds 1 MB")
+            aligned, mappings = apply_column_mapping(
+                baseline,
+                current,
+                json.loads(
+                    args.column_mapping.read_text(encoding="utf-8"),
+                    object_pairs_hook=_unique_mapping_keys,
+                ),
+            )
+            comparison = compare_profiles(aligned, current)
+            report["mappingReview"] = {"mappings": mappings, "comparison": comparison}
         report["approvalReview"] = review_changes(
-            report,
+            comparison,
             json.loads(args.approved_rules.read_text(encoding="utf-8"))
             if args.approved_rules
             else [],

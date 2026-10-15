@@ -31,3 +31,16 @@ table-contract-diff before.csv after.csv --format html --output review.html
 ```
 
 --expected-schema reads columns keyed by name with type, nullable and optional required (default true), plus allow_extra (default false). --approved-rules is an array of exact code/column/before/after matches with explanation; original breakingChange remains visible and schema violations cannot be approved away. --profiles reads named delimiter/null_values/decimal_separator/thousands_separator/date_format settings, selected with --profile. Dates and numeric conventions are explicit; observed sample types remain inference. --fail-breaking uses effectiveBreakingChange. Reports and schema outputs must be distinct new files; cell values and source CSVs remain untouched.
+
+
+## Reviewed column mapping (1.2.0 source candidate)
+
+Pass `--column-mapping mapping.json` to align explicitly reviewed removed-to-added columns. The JSON is an array, for example:
+
+```json
+[{"from": "customer_id", "to": "customer_identifier", "explanation": "Reviewed identifier header change"}]
+```
+
+Only exact observed removed/added names are accepted, with one-to-one endpoints and non-empty explanations. Duplicate JSON keys, unknown fields, missing names, identity mappings, chains, cycles and collisions are rejected. No similarity suggestion is applied automatically. Empty arrays leave comparison unchanged. Inputs and exported source profiles remain unchanged.
+
+The original `addedColumns`, `removedColumns`, `changes` and `breakingChange` stay visible. `mappingReview` records the mapping and aligned comparison. `approvalReview` and `effectiveBreakingChange` use that aligned comparison, so an explicit header-only mapping can pass `--fail-breaking`. Type and nullability changes still need their own exact approved rules, using the current column name. Expected schemas always validate the actual current headers and cannot be overridden by a mapping. HTML pairs mapped columns and escapes names/explanations; reports never include cell values. Mapping files over 1 MB are refused.
