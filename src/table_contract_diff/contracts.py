@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import json
 from typing import Any
 
 TYPES = {"text", "integer", "decimal", "boolean", "date", "datetime", "mixed", "unknown"}
@@ -58,7 +59,7 @@ def validate_profile(profile: Any) -> dict[str, Any]:
         raise ValueError("unknown parsing profile key")
     for key in ("delimiter", "decimal_separator", "thousands_separator"):
         value = profile.get(key)
-        if value is not None and (not isinstance(value, str) or len(value) != 1):
+        if key in profile and (not isinstance(value, str) or len(value) != 1 or value in "\r\n\0"):
             raise ValueError(f"{key} must be one character")
     nulls = profile.get("null_values", [""])
     if not isinstance(nulls, list) or any(not isinstance(v, str) for v in nulls):
@@ -145,7 +146,10 @@ def review_changes(report: dict[str, Any], rules: Any) -> dict[str, Any]:
         matches = [
             r
             for r in rules
-            if all(r[k] == change[k] for k in ("code", "column", "before", "after"))
+            if all(
+                type(r[k]) is type(change[k]) and r[k] == change[k]
+                for k in ("code", "column", "before", "after")
+            )
         ]
         reviewed.append(
             {
@@ -170,10 +174,20 @@ def render_html(report: dict[str, Any], before: dict[str, Any], after: dict[str,
     new = {c["name"]: c for c in after["columns"]}
     parts = [
         '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Table contract review</title>',
-        "<style>body{font:17px system-ui;max-width:1100px;margin:auto;padding:22px;background:#f5f1e8;color:#203442}article{background:white;padding:18px;border:1px solid #abc;border-radius:12px;margin:16px 0}.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}p{overflow-wrap:anywhere}@media(max-width:600px){.pair{grid-template-columns:1fr}}</style>",
+        "<style>body{font:17px system-ui;max-width:1100px;margin:auto;padding:22px;background:#f5f1e8;color:#203442}article{background:white;padding:18px;border:1px solid #abc;border-radius:12px;margin:16px 0}.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}p,h2,li{overflow-wrap:anywhere}section{min-width:0}@media(max-width:600px){.pair{grid-template-columns:1fr}}</style>",
         "<h1>Table contract review</h1><p>Observed sample types are inference. Expected schema and approved changes are operator-authored contracts. No cell values are included.</p>",
         f"<p>Baseline rows: {before['rowCount']}; current rows: {after['rowCount']}. Invalid rows: {before['invalidRowCount']} → {after['invalidRowCount']}.</p>",
     ]
+    delimiter = report.get("delimiterComparison", {})
+    parts.append(
+        "<p>Parsing delimiter: "
+        + html.escape(json.dumps(delimiter.get("before")))
+        + " → "
+        + html.escape(json.dumps(delimiter.get("after")))
+        + "; changed: "
+        + html.escape(str(delimiter.get("changed")))
+        + " (informational).</p>"
+    )
     mappings = report.get("mappingReview", {}).get("mappings", [])
     renamed = {item["from"]: item["to"] for item in mappings}
     targets = set(renamed.values())

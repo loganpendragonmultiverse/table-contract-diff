@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1 - 2026-10-20
+
+- Bound input reads, aggregate CSV column statistics and report malformed quoting/oversized fields clearly.
+- Preserve midnight datetime inference and canonical ISO week dates across supported Python versions; distinguish boolean from numeric approval values.
+- Protect existing/competing outputs, escape literal Markdown cells and wrap long HTML headers.
+- Ship complete release handoffs and synthetic examples in wheel and source installations.
+- Expose informational before/after delimiter changes in JSON, Markdown and HTML without changing structural breaking rules.
+
+JSON inputs reject nesting beyond 128 containers with an actionable error, including parser recursion failures.
+
+- Reject JSON numeric overflow while preserving finite fractions.
+
 ## 1.2.0 - 2026-10-15
 
 - Add explicit one-to-one removed-to-added column mappings with required explanations and aligned structural comparison.

@@ -1,0 +1,2 @@
+include README.md CHANGELOG.md DEVELOPMENT.md TESTING.md LICENSE
+recursive-include examples *.csv
