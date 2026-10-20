@@ -10,6 +10,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from ._io import read_bytes
 from .contracts import validate_profile
 
 
@@ -34,13 +35,20 @@ def _cell_type(value: str) -> str:
         return "integer"
     if re.fullmatch(r"[+-]?(?:\d+\.\d*|\d*\.\d+)", clean):
         return "decimal"
+    week = re.fullmatch(r"([0-9]{4})-W([0-9]{2})-([0-9])", clean)
+    if week:
+        try:
+            date.fromisocalendar(*(int(part) for part in week.groups()))
+            return "date"
+        except ValueError:
+            return "text"
     try:
-        parsed = datetime.fromisoformat(clean.replace("Z", "+00:00"))
-        return "datetime" if parsed.time().isoformat() != "00:00:00" or "T" in clean else "date"
+        date.fromisoformat(clean)
+        return "date"
     except ValueError:
         try:
-            date.fromisoformat(clean)
-            return "date"
+            datetime.fromisoformat(clean.replace("Z", "+00:00"))
+            return "datetime"
         except ValueError:
             return "text"
 
@@ -58,7 +66,7 @@ def _merge_types(types: set[str]) -> str:
 
 def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = validate_profile({} if profile is None else profile)
-    raw = path.read_bytes()
+    raw = read_bytes(path)
     text = raw.decode("utf-8-sig")
     if not text.strip():
         raise ValueError("CSV is empty")
@@ -66,26 +74,9 @@ def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, 
         dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
-    reader = csv.reader(io.StringIO(text), delimiter=settings.get("delimiter", dialect.delimiter))
-    try:
-        headers = next(reader)
-    except StopIteration as exc:  # pragma: no cover - guarded by the non-empty check
-        raise ValueError("CSV is empty") from exc
-    if not headers or any(not header.strip() for header in headers):
-        raise ValueError("every column requires a non-empty header")
-    if len(set(headers)) != len(headers):
-        raise ValueError("duplicate headers are not supported")
-    values: list[list[str]] = [[] for _ in headers]
-    row_count = 0
-    invalid_rows = 0
-    for row in reader:
-        row_count += 1
-        if len(row) != len(headers):
-            invalid_rows += 1
-            continue
-        for index, value in enumerate(row):
-            values[index].append(value)
-    columns = []
+    reader = csv.reader(
+        io.StringIO(text), delimiter=settings.get("delimiter", dialect.delimiter), strict=True
+    )
     null_values = set(settings.get("null_values", [""]))
 
     def cell_type(value: str) -> str:
@@ -96,7 +87,6 @@ def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, 
             return "text"
         if settings.get("date_format"):
             try:
-                # Date syntax validation only; this never represents or compares an instant.
                 datetime.strptime(clean, settings["date_format"]).date()
                 return "date"
             except ValueError:
@@ -108,19 +98,42 @@ def profile_csv(path: Path, profile: dict[str, Any] | None = None) -> dict[str, 
         kind = _cell_type(number)
         return kind if kind in ("integer", "decimal") else _cell_type(clean)
 
-    for index, (header, column) in enumerate(zip(headers, values, strict=True)):
-        null_count = sum(value.strip() in null_values for value in column)
-        columns.append(
-            ColumnProfile(
-                header,
-                index,
-                _merge_types({cell_type(value) for value in column}),
-                bool(null_count),
-                null_count,
-                len(column) - null_count,
-                max((len(value) for value in column), default=0),
-            )
+    try:
+        headers = next(reader)
+        if not headers or any(not header.strip() for header in headers):
+            raise ValueError("every column requires a non-empty header")
+        if len(set(headers)) != len(headers):
+            raise ValueError("duplicate headers are not supported")
+        types: list[set[str]] = [set() for _ in headers]
+        null_counts = [0 for _ in headers]
+        max_lengths = [0 for _ in headers]
+        row_count = invalid_rows = valid_rows = 0
+        for row in reader:
+            row_count += 1
+            if len(row) != len(headers):
+                invalid_rows += 1
+                continue
+            valid_rows += 1
+            for index, value in enumerate(row):
+                types[index].add(cell_type(value))
+                null_counts[index] += value.strip() in null_values
+                max_lengths[index] = max(max_lengths[index], len(value))
+    except StopIteration as exc:
+        raise ValueError("CSV is empty") from exc
+    except csv.Error as exc:
+        raise ValueError("CSV parser rejected malformed quoting or an oversized field") from exc
+    columns = [
+        ColumnProfile(
+            header,
+            index,
+            _merge_types(types[index]),
+            bool(null_counts[index]),
+            null_counts[index],
+            valid_rows - null_counts[index],
+            max_lengths[index],
         )
+        for index, header in enumerate(headers)
+    ]
     return {
         "schemaVersion": 1,
         "source": path.name,
@@ -165,6 +178,13 @@ def compare_profiles(baseline: dict[str, object], current: dict[str, object]) ->
                 rename_candidates.append({"from": old_name, "to": new_name, "similarity": score})
     return {
         "schemaVersion": 1,
+        "delimiterComparison": {
+            "before": baseline.get("delimiter"),
+            "after": current.get("delimiter"),
+            "changed": baseline.get("delimiter") != current.get("delimiter")
+            if "delimiter" in baseline and "delimiter" in current
+            else None,
+        },
         "baselineSha256": baseline["sourceSha256"],
         "currentSha256": current["sourceSha256"],
         "addedColumns": added,
